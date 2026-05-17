@@ -365,6 +365,11 @@ export default function Home() {
     setSendingMagicLink(false)
   }
 
+  const handleLoginSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    await handleSendMagicLink()
+  }
+
   const handleToggleHour = (hour: number) => {
     if (isSelectedDateInPast) {
       return
@@ -467,7 +472,7 @@ export default function Home() {
         <div className="mx-auto max-w-xl">
           <Card>
             <CardHeader>
-              <CardTitle>Digizag Meeting Room</CardTitle>
+              <CardTitle>DigiZag Meeting Room</CardTitle>
               <CardDescription>Supabase environment variables are missing.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-muted-foreground">
@@ -487,20 +492,22 @@ export default function Home() {
         <div className="mx-auto max-w-xl">
           <Card>
             <CardHeader>
-              <CardTitle>Digizag Meeting Room</CardTitle>
+              <CardTitle>DigiZag Meeting Room</CardTitle>
               <CardDescription>Email-only login (magic link).</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Input
-                type="email"
-                placeholder="name@digizag.com"
-                value={authEmail}
-                onChange={(event) => setAuthEmail(event.target.value)}
-              />
-              <Button onClick={handleSendMagicLink} disabled={sendingMagicLink}>
-                <MailIcon className="size-4" />
-                {sendingMagicLink ? "Sending..." : "Send Login Link"}
-              </Button>
+            <CardContent>
+              <form className="space-y-3" onSubmit={handleLoginSubmit}>
+                <Input
+                  type="email"
+                  placeholder="name@digizag.com"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                />
+                <Button type="submit" disabled={sendingMagicLink}>
+                  <MailIcon className="size-4" />
+                  {sendingMagicLink ? "Sending..." : "Send Login Link"}
+                </Button>
+              </form>
             </CardContent>
           </Card>
 
@@ -535,15 +542,15 @@ export default function Home() {
               <div className="mb-2">
                 <Image
                   src="/digizag%20logo.png"
-                  alt="Digizag Logo"
+                  alt="DigiZag Logo"
                   width={280}
                   height={96}
                   className="h-14 w-auto object-contain md:h-16"
                   priority
                 />
               </div>
-              <CardTitle className="text-2xl">Digizag Meeting Room</CardTitle>
-              <CardDescription>{currentUserName} - Digizag</CardDescription>
+              <CardTitle className="text-2xl">DigiZag Meeting Room</CardTitle>
+              <CardDescription>{currentUserName} - DigiZag</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">

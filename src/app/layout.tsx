@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Digizag Meeting Room",
-  description: "Digizag internal meeting room booking",
+  title: "DigiZag Meeting Room",
+  description: "DigiZag internal meeting room booking",
 };
 
 export default function RootLayout({

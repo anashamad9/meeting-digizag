@@ -1,4 +1,4 @@
--- Digizag Meeting Room schema
+-- DigiZag Meeting Room schema
 -- Paste this in Supabase SQL editor and run once.
 
 create extension if not exists pgcrypto;
