@@ -742,16 +742,16 @@ export default function Home() {
   if (!user || isRecoveryMode) {
     return (
       <main className="min-h-screen bg-muted/40 px-4 py-8 md:px-6">
-        <div className="mx-auto max-w-lg">
+        <div className="mx-auto max-w-md">
           <Card className="overflow-hidden">
             {!isRecoveryMode && (
-              <div className="w-full bg-muted/20">
+              <div className="flex h-64 w-full items-start justify-center bg-muted/20 sm:h-72">
                 <Image
                   src="/IMG_3807.jpg"
                   alt="DigiZag Meeting Room"
                   width={1284}
                   height={1680}
-                  className="h-auto w-full object-contain"
+                  className="h-full w-auto object-contain"
                   priority
                 />
               </div>
