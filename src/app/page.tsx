@@ -743,20 +743,19 @@ export default function Home() {
     return (
       <main className="min-h-screen bg-muted/40 px-4 py-8 md:px-6">
         <div className="mx-auto max-w-lg">
-          <Card>
+          <Card className="overflow-hidden">
+            {!isRecoveryMode && (
+              <div className="relative w-full aspect-[16/7] sm:aspect-[16/6]">
+                <Image
+                  src="/IMG_3807.jpg"
+                  alt="DigiZag Meeting Room"
+                  fill
+                  className="object-cover object-center"
+                  priority
+                />
+              </div>
+            )}
             <CardHeader>
-              {!isRecoveryMode && (
-                <div className="mb-2 flex justify-center">
-                  <Image
-                    src="/IMG_3807.jpg"
-                    alt="DigiZag Meeting Room"
-                    width={1284}
-                    height={1680}
-                    className="h-40 w-auto rounded-lg border object-cover"
-                    priority
-                  />
-                </div>
-              )}
               <CardTitle>DigiZag Meeting Room</CardTitle>
               <CardDescription>
                 {isRecoveryMode ? "Set a new password." : "Email + password login."}
