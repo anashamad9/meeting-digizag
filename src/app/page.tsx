@@ -745,12 +745,13 @@ export default function Home() {
         <div className="mx-auto max-w-lg">
           <Card className="overflow-hidden">
             {!isRecoveryMode && (
-              <div className="relative w-full aspect-[16/7] sm:aspect-[16/6]">
+              <div className="w-full bg-muted/20">
                 <Image
                   src="/IMG_3807.jpg"
                   alt="DigiZag Meeting Room"
-                  fill
-                  className="object-cover object-center"
+                  width={1284}
+                  height={1680}
+                  className="h-auto w-full object-contain"
                   priority
                 />
               </div>
