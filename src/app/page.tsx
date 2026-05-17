@@ -587,8 +587,8 @@ export default function Home() {
 
   if (!user) {
     return (
-      <main className="min-h-screen bg-muted/40 px-4 py-10 md:px-8">
-        <div className="mx-auto max-w-xl">
+      <main className="min-h-screen bg-muted/40 px-4 py-8 md:px-6">
+        <div className="mx-auto max-w-lg">
           <Card>
             <CardHeader>
               <CardTitle>DigiZag Meeting Room</CardTitle>
@@ -602,8 +602,9 @@ export default function Home() {
                     placeholder="name@digizag.com"
                     value={authEmail}
                     onChange={(event) => setAuthEmail(event.target.value)}
+                    className="h-9 text-sm"
                   />
-                  <Button type="submit" disabled={checkingEmail}>
+                  <Button type="submit" size="sm" disabled={checkingEmail}>
                     <MailIcon className="size-4" />
                     {checkingEmail ? "Checking..." : "Continue"}
                   </Button>
@@ -612,14 +613,14 @@ export default function Home() {
 
               {(authStep === "login" || authStep === "signup") && (
                 <form className="space-y-3" onSubmit={handleAuthSubmit}>
-                  <Input type="email" value={normalizedEmail} disabled />
+                  <Input type="email" value={normalizedEmail} disabled className="h-9 text-sm" />
                   <div className="relative">
                     <Input
                       type={showAuthPassword ? "text" : "password"}
                       placeholder={authStep === "login" ? "Enter your password" : "Create password"}
                       value={authPassword}
                       onChange={(event) => setAuthPassword(event.target.value)}
-                      className="pr-24"
+                      className="h-9 pr-24 text-sm"
                     />
                     <button
                       type="button"
@@ -646,7 +647,7 @@ export default function Home() {
                         placeholder="Confirm password"
                         value={authPasswordConfirm}
                         onChange={(event) => setAuthPasswordConfirm(event.target.value)}
-                        className="pr-24"
+                        className="h-9 pr-24 text-sm"
                       />
                       <button
                         type="button"
@@ -668,7 +669,7 @@ export default function Home() {
                     </div>
                   )}
                   <div className="flex flex-wrap gap-2">
-                    <Button type="submit" disabled={submittingAuth}>
+                    <Button type="submit" size="sm" disabled={submittingAuth}>
                       {authStep === "login" ? <LockIcon className="size-4" /> : <UserPlusIcon className="size-4" />}
                       {submittingAuth
                         ? authStep === "login"
@@ -678,7 +679,7 @@ export default function Home() {
                           ? "Login"
                           : "Create Account"}
                     </Button>
-                    <Button type="button" variant="outline" onClick={handleBackToEmail}>
+                    <Button type="button" size="sm" variant="outline" onClick={handleBackToEmail}>
                       <ArrowLeftIcon className="size-4" />
                       Change Email
                     </Button>
@@ -702,8 +703,8 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-muted/40 px-4 py-6 md:px-8 md:py-10">
-      <div className="mx-auto max-w-7xl">
+    <main className="min-h-screen bg-muted/40 px-4 py-5 md:px-6 md:py-7">
+      <div className="mx-auto max-w-[1160px]">
         {notice && (
           <div className="mb-4">
             <Alert variant={notice.kind === "error" ? "destructive" : "default"}>
@@ -713,7 +714,7 @@ export default function Home() {
           </div>
         )}
 
-        <div className="grid gap-4 lg:grid-cols-[280px_1fr_320px]">
+        <div className="grid gap-3 lg:grid-cols-[220px_560px_290px] lg:justify-center">
           <Card>
             <CardHeader>
               <div className="mb-2">
@@ -722,11 +723,11 @@ export default function Home() {
                   alt="DigiZag Logo"
                   width={280}
                   height={96}
-                  className="h-14 w-auto object-contain md:h-16"
+                  className="h-10 w-auto object-contain md:h-12"
                   priority
                 />
               </div>
-              <CardTitle className="text-2xl">DigiZag Meeting Room</CardTitle>
+              <CardTitle className="text-xl">DigiZag Meeting Room</CardTitle>
               <CardDescription>{currentUserName} - DigiZag</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
@@ -741,30 +742,30 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{TIME_ZONE}</Badge>
               </div>
-              <Button variant="destructive" onClick={handleSignOut}>
+              <Button size="sm" variant="destructive" onClick={handleSignOut}>
                 <LogOutIcon className="size-4" />
                 Sign out
               </Button>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="mx-auto w-full max-w-[560px]">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>{format(currentMonth, "MMMM yyyy")}</CardTitle>
+                  <CardTitle className="text-lg">{format(currentMonth, "MMMM yyyy")}</CardTitle>
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-xs"
                     onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
                   >
                     <ChevronLeftIcon className="size-4" />
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-xs"
                     onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
                   >
                     <ChevronRightIcon className="size-4" />
@@ -773,7 +774,7 @@ export default function Home() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-7 gap-2 text-center text-xs font-medium text-muted-foreground">
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-muted-foreground">
                 {WEEKDAYS.map((day) => (
                   <div key={day} className="py-1">
                     {day}
@@ -781,7 +782,7 @@ export default function Home() {
                 ))}
               </div>
 
-              <div className="mt-2 grid grid-cols-7 gap-2">
+              <div className="mt-1.5 grid grid-cols-7 gap-1">
                 {calendarDays.map((day) => {
                   const key = formatDateKey(day)
                   const isInCurrentMonth = isSameMonth(day, currentMonth)
@@ -797,7 +798,7 @@ export default function Home() {
                         setSelectedHours([])
                       }}
                       className={[
-                        "min-h-20 rounded-lg border p-2 text-left transition",
+                        "min-h-14 rounded-md border p-1.5 text-left transition",
                         isSelected
                           ? "border-primary bg-primary text-primary-foreground"
                           : "border-border bg-background hover:bg-muted",
@@ -806,19 +807,19 @@ export default function Home() {
                         .filter(Boolean)
                         .join(" ")}
                     >
-                      <div className="text-sm font-semibold">{format(day, "d")}</div>
+                      <div className="text-xs font-semibold">{format(day, "d")}</div>
 
                       {summary && (
-                        <div className="mt-1 space-y-1">
-                          <div className="text-[10px] opacity-80">{summary.count} booked hour(s)</div>
-                          <div className="space-y-0.5">
+                        <div className="mt-0.5 space-y-0.5">
+                          <div className="text-[9px] opacity-80">{summary.count} booked</div>
+                          <div className="space-y-px">
                             {summary.names.slice(0, 2).map((name) => (
-                              <div key={`${key}-${name}`} className="truncate text-[10px] opacity-85">
+                              <div key={`${key}-${name}`} className="truncate text-[9px] opacity-85">
                                 {name}
                               </div>
                             ))}
                             {summary.names.length > 2 && (
-                              <div className="text-[10px] opacity-80">+{summary.names.length - 2} more</div>
+                              <div className="text-[9px] opacity-80">+{summary.names.length - 2}</div>
                             )}
                           </div>
                         </div>
@@ -830,9 +831,9 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="w-full">
             <CardHeader>
-              <CardTitle>{format(selectedDate, "EEE d")}</CardTitle>
+              <CardTitle className="text-lg">{format(selectedDate, "EEE d")}</CardTitle>
               <CardDescription>
                 Select one or more hours to book, or delete your own booking.
               </CardDescription>
@@ -840,7 +841,7 @@ export default function Home() {
                 <p className="text-xs text-destructive">Past days cannot be booked.</p>
               )}
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2.5">
               {HOURS.map((hour) => {
                 const booking = selectedDateBookings.find((item) => item.hour === hour)
                 const isBooked = Boolean(booking)
@@ -853,23 +854,23 @@ export default function Home() {
                   <div
                     key={hour}
                     className={[
-                      "flex items-center justify-between rounded-lg border px-3 py-2",
+                      "flex items-center justify-between rounded-md border px-2.5 py-1.5",
                       isBooked ? "border-border bg-muted/60" : "border-border bg-background",
                     ]
                       .filter(Boolean)
                       .join(" ")}
                   >
-                    <span className="font-medium">{toHourLabel(hour)}</span>
+                    <span className="text-sm font-medium">{toHourLabel(hour)}</span>
 
                     {isBooked ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <Badge variant="secondary">
                           {getDisplayName(resolveProfile(booking?.profiles ?? null))}
                         </Badge>
                         {canDeleteBooking && booking && (
                           <Button
                             variant="destructive"
-                            size="sm"
+                            size="xs"
                             onClick={() => handleDeleteBooking(booking)}
                             disabled={isDeleting}
                           >
@@ -903,6 +904,7 @@ export default function Home() {
               </div>
 
               <Button
+                size="sm"
                 onClick={handleBookHours}
                 disabled={submittingBooking || selectedHours.length === 0 || isSelectedDateInPast}
               >
