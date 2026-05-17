@@ -23,6 +23,8 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Clock3Icon,
+  EyeIcon,
+  EyeOffIcon,
   LockIcon,
   LogOutIcon,
   MailIcon,
@@ -132,6 +134,8 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState("")
   const [authPassword, setAuthPassword] = useState("")
   const [authPasswordConfirm, setAuthPasswordConfirm] = useState("")
+  const [showAuthPassword, setShowAuthPassword] = useState(false)
+  const [showAuthPasswordConfirm, setShowAuthPasswordConfirm] = useState(false)
   const [checkingEmail, setCheckingEmail] = useState(false)
   const [submittingAuth, setSubmittingAuth] = useState(false)
 
@@ -386,6 +390,8 @@ export default function Home() {
 
     setAuthPassword("")
     setAuthPasswordConfirm("")
+    setShowAuthPassword(false)
+    setShowAuthPasswordConfirm(false)
     setCheckingEmail(false)
   }
 
@@ -439,7 +445,7 @@ export default function Home() {
         setAuthStep("login")
         setNotice({
           kind: "success",
-          text: "Account created. If you cannot login, disable Confirm Email in Supabase Auth settings.",
+          text: "Account created. Please login with your password.",
         })
       } else {
         setNotice({ kind: "success", text: "Account created and logged in." })
@@ -453,6 +459,8 @@ export default function Home() {
     setAuthStep("email")
     setAuthPassword("")
     setAuthPasswordConfirm("")
+    setShowAuthPassword(false)
+    setShowAuthPasswordConfirm(false)
     setNotice(null)
   }
 
@@ -516,6 +524,8 @@ export default function Home() {
     setAuthStep("email")
     setAuthPassword("")
     setAuthPasswordConfirm("")
+    setShowAuthPassword(false)
+    setShowAuthPasswordConfirm(false)
     setNotice(null)
   }
 
@@ -603,19 +613,59 @@ export default function Home() {
               {(authStep === "login" || authStep === "signup") && (
                 <form className="space-y-3" onSubmit={handleAuthSubmit}>
                   <Input type="email" value={normalizedEmail} disabled />
-                  <Input
-                    type="password"
-                    placeholder={authStep === "login" ? "Enter your password" : "Create password"}
-                    value={authPassword}
-                    onChange={(event) => setAuthPassword(event.target.value)}
-                  />
-                  {authStep === "signup" && (
+                  <div className="relative">
                     <Input
-                      type="password"
-                      placeholder="Confirm password"
-                      value={authPasswordConfirm}
-                      onChange={(event) => setAuthPasswordConfirm(event.target.value)}
+                      type={showAuthPassword ? "text" : "password"}
+                      placeholder={authStep === "login" ? "Enter your password" : "Create password"}
+                      value={authPassword}
+                      onChange={(event) => setAuthPassword(event.target.value)}
+                      className="pr-24"
                     />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowAuthPassword((prev) => !prev)}
+                    >
+                      {showAuthPassword ? (
+                        <span className="inline-flex items-center gap-1">
+                          <EyeOffIcon className="size-3.5" />
+                          Hide
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          <EyeIcon className="size-3.5" />
+                          View
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                  {authStep === "signup" && (
+                    <div className="relative">
+                      <Input
+                        type={showAuthPasswordConfirm ? "text" : "password"}
+                        placeholder="Confirm password"
+                        value={authPasswordConfirm}
+                        onChange={(event) => setAuthPasswordConfirm(event.target.value)}
+                        className="pr-24"
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowAuthPasswordConfirm((prev) => !prev)}
+                      >
+                        {showAuthPasswordConfirm ? (
+                          <span className="inline-flex items-center gap-1">
+                            <EyeOffIcon className="size-3.5" />
+                            Hide
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            <EyeIcon className="size-3.5" />
+                            View
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   )}
                   <div className="flex flex-wrap gap-2">
                     <Button type="submit" disabled={submittingAuth}>
