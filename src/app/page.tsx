@@ -69,6 +69,7 @@ const ROOM_TIME_ZONE = "Asia/Amman"
 const SESSION_STARTED_AT_KEY = "digizag_meeting_room_session_started_at"
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const HR_EMAIL = "hr@digizag.com"
+const LOGIN_TYPING_TEXT = "Welcome to the meeting Toom"
 
 function formatDateKey(value: Date) {
   return format(value, "yyyy-MM-dd")
@@ -169,6 +170,7 @@ export default function Home() {
   const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null)
   const [signingOut, setSigningOut] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [typedLoginTitle, setTypedLoginTitle] = useState("")
 
   const normalizedEmail = authEmail.trim().toLowerCase()
   const isRecoveryPasswordValid =
@@ -180,6 +182,33 @@ export default function Home() {
     const hash = window.location.hash.toLowerCase()
     const search = window.location.search.toLowerCase()
     return hash.includes("type=recovery") || search.includes("type=recovery")
+  }, [])
+
+  useEffect(() => {
+    let index = 0
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+    const tick = () => {
+      if (index <= LOGIN_TYPING_TEXT.length) {
+        setTypedLoginTitle(LOGIN_TYPING_TEXT.slice(0, index))
+        index += 1
+        timeoutId = setTimeout(tick, 65)
+      } else {
+        timeoutId = setTimeout(() => {
+          index = 0
+          setTypedLoginTitle("")
+          tick()
+        }, 1200)
+      }
+    }
+
+    tick()
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+    }
   }, [])
 
   const markSessionStarted = useCallback(() => {
@@ -757,7 +786,9 @@ export default function Home() {
               </div>
             )}
             <CardHeader>
-              <CardTitle>DigiZag Meeting Room</CardTitle>
+              <CardTitle>
+                {isRecoveryMode ? "DigiZag Meeting Room" : `${typedLoginTitle || " "}|`}
+              </CardTitle>
               <CardDescription>
                 {isRecoveryMode ? "Set a new password." : "Email + password login."}
               </CardDescription>
