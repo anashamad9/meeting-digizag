@@ -9,10 +9,8 @@ import {
   endOfMonth,
   endOfWeek,
   format,
-  isBefore,
   isSameDay,
   isSameMonth,
-  startOfDay,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -67,13 +65,28 @@ type AuthStep = "email" | "login" | "signup"
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 8)
 const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
-const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
+const ROOM_TIME_ZONE = "Asia/Amman"
 const SESSION_STARTED_AT_KEY = "digizag_meeting_room_session_started_at"
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const HR_EMAIL = "hr@digizag.com"
 
 function formatDateKey(value: Date) {
   return format(value, "yyyy-MM-dd")
+}
+
+function getDateKeyInTimeZone(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value)
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000"
+  const month = parts.find((part) => part.type === "month")?.value ?? "01"
+  const day = parts.find((part) => part.type === "day")?.value ?? "01"
+
+  return `${year}-${month}-${day}`
 }
 
 function getDisplayName(
@@ -138,6 +151,13 @@ export default function Home() {
   const [showAuthPasswordConfirm, setShowAuthPasswordConfirm] = useState(false)
   const [checkingEmail, setCheckingEmail] = useState(false)
   const [submittingAuth, setSubmittingAuth] = useState(false)
+  const [sendingResetPassword, setSendingResetPassword] = useState(false)
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false)
+  const [recoveryPassword, setRecoveryPassword] = useState("")
+  const [recoveryPasswordConfirm, setRecoveryPasswordConfirm] = useState("")
+  const [showRecoveryPassword, setShowRecoveryPassword] = useState(false)
+  const [showRecoveryPasswordConfirm, setShowRecoveryPasswordConfirm] = useState(false)
+  const [submittingRecoveryPassword, setSubmittingRecoveryPassword] = useState(false)
 
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()))
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -150,6 +170,12 @@ export default function Home() {
   const [notice, setNotice] = useState<Notice | null>(null)
 
   const normalizedEmail = authEmail.trim().toLowerCase()
+
+  const hasRecoveryLink = useCallback(() => {
+    const hash = window.location.hash.toLowerCase()
+    const search = window.location.search.toLowerCase()
+    return hash.includes("type=recovery") || search.includes("type=recovery")
+  }, [])
 
   const markSessionStarted = useCallback(() => {
     localStorage.setItem(SESSION_STARTED_AT_KEY, String(Date.now()))
@@ -220,6 +246,10 @@ export default function Home() {
     }
 
     let mounted = true
+    const recoveryRequested = hasRecoveryLink()
+    if (recoveryRequested) {
+      setIsRecoveryMode(true)
+    }
 
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) {
@@ -246,6 +276,11 @@ export default function Home() {
       setUser(sessionUser)
       setReady(true)
 
+      if (recoveryRequested && sessionUser) {
+        setIsRecoveryMode(true)
+        setNotice({ kind: "success", text: "Set a new password for your account." })
+      }
+
       if (sessionUser) {
         await ensureProfile(sessionUser)
         await loadMonthBookings(currentMonth)
@@ -257,8 +292,19 @@ export default function Home() {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       const sessionUser = session?.user ?? null
 
+      if (event === "PASSWORD_RECOVERY") {
+        setIsRecoveryMode(true)
+        setNotice({ kind: "success", text: "Set a new password for your account." })
+      }
+
+      if (event === "SIGNED_IN" && hasRecoveryLink()) {
+        setIsRecoveryMode(true)
+        setNotice({ kind: "success", text: "Set a new password for your account." })
+      }
+
       if (event === "SIGNED_OUT") {
         clearSessionStarted()
+        setIsRecoveryMode(false)
       }
 
       if (event === "SIGNED_IN") {
@@ -292,6 +338,7 @@ export default function Home() {
     clearSessionStarted,
     currentMonth,
     ensureProfile,
+    hasRecoveryLink,
     hasSessionExpired,
     loadMonthBookings,
     markSessionStarted,
@@ -341,7 +388,8 @@ export default function Home() {
     [selectedDateBookings]
   )
 
-  const isSelectedDateInPast = isBefore(startOfDay(selectedDate), startOfDay(new Date()))
+  const todayKeyInRoomTimeZone = getDateKeyInTimeZone(new Date(), ROOM_TIME_ZONE)
+  const isSelectedDateInPast = selectedDateKey < todayKeyInRoomTimeZone
 
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(currentMonth)
@@ -464,6 +512,64 @@ export default function Home() {
     setNotice(null)
   }
 
+  const handleForgotPassword = async () => {
+    if (!isValidEmail(normalizedEmail)) {
+      setNotice({ kind: "error", text: "Enter your email first, then click Forgot password." })
+      return
+    }
+
+    setSendingResetPassword(true)
+
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: window.location.origin,
+    })
+
+    if (error) {
+      setNotice({ kind: "error", text: error.message })
+    } else {
+      setNotice({
+        kind: "success",
+        text: "Password reset link sent. Open your email, then set the new password here.",
+      })
+    }
+
+    setSendingResetPassword(false)
+  }
+
+  const handleRecoveryPasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (recoveryPassword.length < 6) {
+      setNotice({ kind: "error", text: "Password must be at least 6 characters." })
+      return
+    }
+
+    if (recoveryPassword !== recoveryPasswordConfirm) {
+      setNotice({ kind: "error", text: "Passwords do not match." })
+      return
+    }
+
+    setSubmittingRecoveryPassword(true)
+
+    const { error } = await supabase.auth.updateUser({
+      password: recoveryPassword,
+    })
+
+    if (error) {
+      setNotice({ kind: "error", text: error.message })
+    } else {
+      setIsRecoveryMode(false)
+      setRecoveryPassword("")
+      setRecoveryPasswordConfirm("")
+      setShowRecoveryPassword(false)
+      setShowRecoveryPasswordConfirm(false)
+      setNotice({ kind: "success", text: "Password updated. You can continue using the app." })
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
+
+    setSubmittingRecoveryPassword(false)
+  }
+
   const handleToggleHour = (hour: number) => {
     if (isSelectedDateInPast) {
       return
@@ -526,6 +632,11 @@ export default function Home() {
     setAuthPasswordConfirm("")
     setShowAuthPassword(false)
     setShowAuthPasswordConfirm(false)
+    setIsRecoveryMode(false)
+    setRecoveryPassword("")
+    setRecoveryPasswordConfirm("")
+    setShowRecoveryPassword(false)
+    setShowRecoveryPasswordConfirm(false)
     setNotice(null)
   }
 
@@ -585,23 +696,92 @@ export default function Home() {
     )
   }
 
-  if (!user) {
+  if (!user || isRecoveryMode) {
     return (
       <main className="min-h-screen bg-muted/40 px-4 py-8 md:px-6">
         <div className="mx-auto max-w-lg">
           <Card>
             <CardHeader>
               <CardTitle>DigiZag Meeting Room</CardTitle>
-              <CardDescription>Email + password login.</CardDescription>
+              <CardDescription>
+                {isRecoveryMode ? "Set a new password." : "Email + password login."}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {authStep === "email" && (
+              {isRecoveryMode && (
+                <form className="space-y-3" onSubmit={handleRecoveryPasswordSubmit}>
+                  <div className="relative">
+                    <input
+                      type={showRecoveryPassword ? "text" : "password"}
+                      placeholder="New password"
+                      value={recoveryPassword}
+                      onChange={(event) => setRecoveryPassword(event.target.value)}
+                      autoComplete="new-password"
+                      name="new_password"
+                      className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 pr-24 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowRecoveryPassword((prev) => !prev)}
+                    >
+                      {showRecoveryPassword ? (
+                        <span className="inline-flex items-center gap-1">
+                          <EyeOffIcon className="size-3.5" />
+                          Hide
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          <EyeIcon className="size-3.5" />
+                          View
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showRecoveryPasswordConfirm ? "text" : "password"}
+                      placeholder="Confirm new password"
+                      value={recoveryPasswordConfirm}
+                      onChange={(event) => setRecoveryPasswordConfirm(event.target.value)}
+                      autoComplete="new-password"
+                      name="confirm_new_password"
+                      className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 pr-24 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowRecoveryPasswordConfirm((prev) => !prev)}
+                    >
+                      {showRecoveryPasswordConfirm ? (
+                        <span className="inline-flex items-center gap-1">
+                          <EyeOffIcon className="size-3.5" />
+                          Hide
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          <EyeIcon className="size-3.5" />
+                          View
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                  <Button type="submit" size="sm" disabled={submittingRecoveryPassword}>
+                    <LockIcon className="size-4" />
+                    {submittingRecoveryPassword ? "Updating..." : "Update Password"}
+                  </Button>
+                </form>
+              )}
+
+              {!isRecoveryMode && authStep === "email" && (
                 <form className="space-y-3" onSubmit={handleEmailStepSubmit}>
                   <Input
                     type="email"
                     placeholder="name@digizag.com"
                     value={authEmail}
                     onChange={(event) => setAuthEmail(event.target.value)}
+                    autoComplete="email"
+                    name="email"
                     className="h-9 text-sm"
                   />
                   <Button type="submit" size="sm" disabled={checkingEmail}>
@@ -611,16 +791,25 @@ export default function Home() {
                 </form>
               )}
 
-              {(authStep === "login" || authStep === "signup") && (
-                <form className="space-y-3" onSubmit={handleAuthSubmit}>
-                  <Input type="email" value={normalizedEmail} disabled className="h-9 text-sm" />
+              {!isRecoveryMode && (authStep === "login" || authStep === "signup") && (
+                <form className="space-y-3" onSubmit={handleAuthSubmit} autoComplete="on">
+                  <Input
+                    type="email"
+                    value={normalizedEmail}
+                    readOnly
+                    autoComplete="username"
+                    name="email"
+                    className="h-9 text-sm"
+                  />
                   <div className="relative">
-                    <Input
+                    <input
                       type={showAuthPassword ? "text" : "password"}
                       placeholder={authStep === "login" ? "Enter your password" : "Create password"}
                       value={authPassword}
                       onChange={(event) => setAuthPassword(event.target.value)}
-                      className="h-9 pr-24 text-sm"
+                      autoComplete={authStep === "login" ? "current-password" : "new-password"}
+                      name="password"
+                      className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 pr-24 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                     />
                     <button
                       type="button"
@@ -642,12 +831,14 @@ export default function Home() {
                   </div>
                   {authStep === "signup" && (
                     <div className="relative">
-                      <Input
+                      <input
                         type={showAuthPasswordConfirm ? "text" : "password"}
                         placeholder="Confirm password"
                         value={authPasswordConfirm}
                         onChange={(event) => setAuthPasswordConfirm(event.target.value)}
-                        className="h-9 pr-24 text-sm"
+                        autoComplete="new-password"
+                        name="confirm_password"
+                        className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 pr-24 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                       />
                       <button
                         type="button"
@@ -683,6 +874,17 @@ export default function Home() {
                       <ArrowLeftIcon className="size-4" />
                       Change Email
                     </Button>
+                    {authStep === "login" && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleForgotPassword}
+                        disabled={sendingResetPassword}
+                      >
+                        {sendingResetPassword ? "Sending reset..." : "Forgot password?"}
+                      </Button>
+                    )}
                   </div>
                 </form>
               )}
@@ -704,7 +906,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-muted/40 px-4 py-5 md:px-6 md:py-7">
-      <div className="mx-auto max-w-[1160px]">
+      <div className="mx-auto max-w-[1080px]">
         {notice && (
           <div className="mb-4">
             <Alert variant={notice.kind === "error" ? "destructive" : "default"}>
@@ -714,7 +916,7 @@ export default function Home() {
           </div>
         )}
 
-        <div className="grid gap-3 lg:grid-cols-[220px_560px_290px] lg:justify-center">
+        <div className="grid gap-3 lg:grid-cols-[210px_500px_280px] lg:justify-center">
           <Card>
             <CardHeader>
               <div className="mb-2">
@@ -740,7 +942,7 @@ export default function Home() {
                 Multi-hour booking enabled
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="outline">{TIME_ZONE}</Badge>
+                <Badge variant="outline">{ROOM_TIME_ZONE}</Badge>
               </div>
               <Button size="sm" variant="destructive" onClick={handleSignOut}>
                 <LogOutIcon className="size-4" />
@@ -749,7 +951,7 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card className="mx-auto w-full max-w-[560px]">
+          <Card className="mx-auto w-full max-w-[500px]">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div>
@@ -786,6 +988,8 @@ export default function Home() {
                 {calendarDays.map((day) => {
                   const key = formatDateKey(day)
                   const isInCurrentMonth = isSameMonth(day, currentMonth)
+                  const isPastDay = key < todayKeyInRoomTimeZone
+                  const isDaySelectable = isInCurrentMonth && !isPastDay
                   const isSelected = isSameDay(day, selectedDate)
                   const summary = bookingsByDate.get(key)
 
@@ -793,21 +997,25 @@ export default function Home() {
                     <button
                       key={key}
                       type="button"
+                      disabled={!isDaySelectable}
                       onClick={() => {
+                        if (!isDaySelectable) {
+                          return
+                        }
                         setSelectedDate(day)
                         setSelectedHours([])
                       }}
                       className={[
-                        "min-h-14 rounded-md border p-1.5 text-left transition",
+                        "min-h-12 rounded-md border p-1.5 text-left transition",
                         isSelected
                           ? "border-primary bg-primary text-primary-foreground"
                           : "border-border bg-background hover:bg-muted",
-                        !isInCurrentMonth && "opacity-45",
+                        !isDaySelectable && "cursor-not-allowed opacity-40 hover:bg-background",
                       ]
                         .filter(Boolean)
                         .join(" ")}
                     >
-                      <div className="text-xs font-semibold">{format(day, "d")}</div>
+                      <div className="text-xs leading-none font-semibold">{format(day, "d")}</div>
 
                       {summary && (
                         <div className="mt-0.5 space-y-0.5">
@@ -855,7 +1063,7 @@ export default function Home() {
                     key={hour}
                     className={[
                       "flex items-center justify-between rounded-md border px-2.5 py-1.5",
-                      isBooked ? "border-border bg-muted/60" : "border-border bg-background",
+                      isBooked ? "border-amber-200/70 bg-amber-50/45" : "border-border bg-background",
                     ]
                       .filter(Boolean)
                       .join(" ")}
