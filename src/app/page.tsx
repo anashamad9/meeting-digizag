@@ -167,9 +167,14 @@ export default function Home() {
   const [selectedHours, setSelectedHours] = useState<number[]>([])
   const [submittingBooking, setSubmittingBooking] = useState(false)
   const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null)
+  const [signingOut, setSigningOut] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
 
   const normalizedEmail = authEmail.trim().toLowerCase()
+  const isRecoveryPasswordValid =
+    recoveryPassword.length >= 6 &&
+    recoveryPasswordConfirm.length >= 6 &&
+    recoveryPassword === recoveryPasswordConfirm
 
   const hasRecoveryLink = useCallback(() => {
     const hash = window.location.hash.toLowerCase()
@@ -550,24 +555,27 @@ export default function Home() {
     }
 
     setSubmittingRecoveryPassword(true)
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: recoveryPassword,
+      })
 
-    const { error } = await supabase.auth.updateUser({
-      password: recoveryPassword,
-    })
-
-    if (error) {
-      setNotice({ kind: "error", text: error.message })
-    } else {
-      setIsRecoveryMode(false)
-      setRecoveryPassword("")
-      setRecoveryPasswordConfirm("")
-      setShowRecoveryPassword(false)
-      setShowRecoveryPasswordConfirm(false)
-      setNotice({ kind: "success", text: "Password updated. You can continue using the app." })
-      window.history.replaceState({}, document.title, window.location.pathname)
+      if (error) {
+        setNotice({ kind: "error", text: error.message })
+      } else {
+        setIsRecoveryMode(false)
+        setRecoveryPassword("")
+        setRecoveryPasswordConfirm("")
+        setShowRecoveryPassword(false)
+        setShowRecoveryPasswordConfirm(false)
+        setNotice({ kind: "success", text: "Password updated. You can continue using the app." })
+        window.history.replaceState({}, document.title, window.location.pathname)
+      }
+    } catch {
+      setNotice({ kind: "error", text: "Failed to update password. Please try again." })
+    } finally {
+      setSubmittingRecoveryPassword(false)
     }
-
-    setSubmittingRecoveryPassword(false)
   }
 
   const handleToggleHour = (hour: number) => {
@@ -626,7 +634,10 @@ export default function Home() {
   }
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
+    setSigningOut(true)
+    setUser(null)
+    setBookings([])
+    setSelectedHours([])
     setAuthStep("email")
     setAuthPassword("")
     setAuthPasswordConfirm("")
@@ -638,6 +649,13 @@ export default function Home() {
     setShowRecoveryPassword(false)
     setShowRecoveryPasswordConfirm(false)
     setNotice(null)
+    clearSessionStarted()
+
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      setNotice({ kind: "error", text: error.message })
+    }
+    setSigningOut(false)
   }
 
   const handleDeleteBooking = async (booking: BookingRow) => {
@@ -766,7 +784,11 @@ export default function Home() {
                       )}
                     </button>
                   </div>
-                  <Button type="submit" size="sm" disabled={submittingRecoveryPassword}>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={submittingRecoveryPassword || !isRecoveryPasswordValid}
+                  >
                     <LockIcon className="size-4" />
                     {submittingRecoveryPassword ? "Updating..." : "Update Password"}
                   </Button>
@@ -957,9 +979,9 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{ROOM_TIME_ZONE}</Badge>
               </div>
-              <Button size="sm" variant="destructive" onClick={handleSignOut}>
+              <Button size="sm" variant="destructive" onClick={handleSignOut} disabled={signingOut}>
                 <LogOutIcon className="size-4" />
-                Sign out
+                {signingOut ? "Signing out..." : "Sign out"}
               </Button>
             </CardContent>
           </Card>
