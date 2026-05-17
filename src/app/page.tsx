@@ -26,6 +26,7 @@ import {
   LockIcon,
   LogOutIcon,
   MailIcon,
+  RefreshCwIcon,
   Trash2Icon,
   UserPlusIcon,
 } from "lucide-react"
@@ -34,7 +35,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { hasSupabaseEnv, supabase } from "@/lib/supabase"
@@ -357,6 +357,27 @@ export default function Home() {
     void loadMonthBookings(currentMonth)
   }, [currentMonth, loadMonthBookings, user])
 
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    const channel = supabase
+      .channel("bookings-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bookings" },
+        () => {
+          void loadMonthBookings(currentMonth)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [currentMonth, loadMonthBookings, user])
+
   const bookingsByDate = useMemo(() => {
     const map = new Map<string, { count: number; names: string[] }>()
 
@@ -633,6 +654,10 @@ export default function Home() {
     setSubmittingBooking(false)
   }
 
+  const handleRefreshBookings = async () => {
+    await loadMonthBookings(currentMonth)
+  }
+
   const handleSignOut = async () => {
     setSigningOut(true)
     setUser(null)
@@ -720,6 +745,18 @@ export default function Home() {
         <div className="mx-auto max-w-lg">
           <Card>
             <CardHeader>
+              {!isRecoveryMode && (
+                <div className="mb-2 flex justify-center">
+                  <Image
+                    src="/IMG_3807.jpg"
+                    alt="DigiZag Meeting Room"
+                    width={1284}
+                    height={1680}
+                    className="h-40 w-auto rounded-lg border object-cover"
+                    priority
+                  />
+                </div>
+              )}
               <CardTitle>DigiZag Meeting Room</CardTitle>
               <CardDescription>
                 {isRecoveryMode ? "Set a new password." : "Email + password login."}
@@ -940,7 +977,7 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-muted/40 px-4 py-5 md:px-6 md:py-7">
+    <main className="min-h-screen bg-muted/40 px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-7">
       <div className="mx-auto max-w-[1080px]">
         {notice && (
           <div className="mb-4">
@@ -952,7 +989,7 @@ export default function Home() {
         )}
 
         <div className="grid gap-3 lg:grid-cols-[210px_500px_280px] lg:justify-center">
-          <Card>
+          <Card className="order-2 lg:order-1">
             <CardHeader>
               <div className="mb-2">
                 <Image
@@ -964,7 +1001,7 @@ export default function Home() {
                   priority
                 />
               </div>
-              <CardTitle className="text-xl">DigiZag Meeting Room</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">DigiZag Meeting Room</CardTitle>
               <CardDescription>{currentUserName} - DigiZag</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
@@ -986,11 +1023,11 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card className="mx-auto w-full max-w-[500px]">
+          <Card className="order-1 mx-auto w-full max-w-[500px] lg:order-2">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-lg">{format(currentMonth, "MMMM yyyy")}</CardTitle>
+                  <CardTitle className="text-base sm:text-lg">{format(currentMonth, "MMMM yyyy")}</CardTitle>
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
@@ -1010,8 +1047,8 @@ export default function Home() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-muted-foreground">
+            <CardContent className="overflow-hidden">
+              <div className="grid grid-cols-7 gap-1 text-center text-[9px] font-medium text-muted-foreground sm:text-[10px]">
                 {WEEKDAYS.map((day) => (
                   <div key={day} className="py-1">
                     {day}
@@ -1041,7 +1078,7 @@ export default function Home() {
                         setSelectedHours([])
                       }}
                       className={[
-                        "min-h-12 rounded-md border p-1.5 text-left transition",
+                        "min-h-11 rounded-md border p-1 text-left transition sm:min-h-12 sm:p-1.5",
                         isSelected
                           ? "border-primary bg-primary text-primary-foreground"
                           : "border-border bg-background hover:bg-muted",
@@ -1050,19 +1087,19 @@ export default function Home() {
                         .filter(Boolean)
                         .join(" ")}
                     >
-                      <div className="text-xs leading-none font-semibold">{format(day, "d")}</div>
+                      <div className="text-[11px] leading-none font-semibold sm:text-xs">{format(day, "d")}</div>
 
                       {summary && (
                         <div className="mt-0.5 space-y-0.5">
-                          <div className="text-[9px] opacity-80">{summary.count} booked</div>
+                          <div className="text-[8px] opacity-80 sm:text-[9px]">{summary.count} booked</div>
                           <div className="space-y-px">
                             {summary.names.slice(0, 2).map((name) => (
-                              <div key={`${key}-${name}`} className="truncate text-[9px] opacity-85">
+                              <div key={`${key}-${name}`} className="truncate text-[8px] opacity-85 sm:text-[9px]">
                                 {name}
                               </div>
                             ))}
                             {summary.names.length > 2 && (
-                              <div className="text-[9px] opacity-80">+{summary.names.length - 2}</div>
+                              <div className="text-[8px] opacity-80 sm:text-[9px]">+{summary.names.length - 2}</div>
                             )}
                           </div>
                         </div>
@@ -1074,9 +1111,21 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card className="w-full">
+          <Card className="order-3 w-full">
             <CardHeader>
-              <CardTitle className="text-lg">{format(selectedDate, "EEE d")}</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base sm:text-lg">{format(selectedDate, "EEE d")}</CardTitle>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  onClick={handleRefreshBookings}
+                  disabled={loadingBookings}
+                >
+                  <RefreshCwIcon className="size-3.5" />
+                  Refresh
+                </Button>
+              </div>
               <CardDescription>
                 Select one or more hours to book, or delete your own booking.
               </CardDescription>
@@ -1084,7 +1133,7 @@ export default function Home() {
                 <p className="text-xs text-destructive">Past days cannot be booked.</p>
               )}
             </CardHeader>
-            <CardContent className="space-y-2.5">
+            <CardContent className="space-y-2">
               {HOURS.map((hour) => {
                 const booking = selectedDateBookings.find((item) => item.hour === hour)
                 const isBooked = Boolean(booking)
@@ -1093,19 +1142,14 @@ export default function Home() {
                 const canDeleteBooking = Boolean(booking && (isOwnBooking || isHrUser))
                 const isDeleting = deletingBookingId === booking?.id
 
-                return (
-                  <div
-                    key={hour}
-                    className={[
-                      "flex items-center justify-between rounded-md border px-2.5 py-1.5",
-                      isBooked ? "border-amber-200/70 bg-amber-50/45" : "border-border bg-background",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  >
-                    <span className="text-sm font-medium">{toHourLabel(hour)}</span>
+                if (isBooked) {
+                  return (
+                    <div
+                      key={hour}
+                      className="flex items-center justify-between rounded-md border border-amber-200/70 bg-amber-50/45 px-2 py-1.5 sm:px-2.5"
+                    >
+                      <span className="text-[13px] font-medium sm:text-sm">{toHourLabel(hour)}</span>
 
-                    {isBooked ? (
                       <div className="flex items-center gap-1.5">
                         <Badge variant="secondary">
                           {getDisplayName(resolveProfile(booking?.profiles ?? null))}
@@ -1122,20 +1166,31 @@ export default function Home() {
                           </Button>
                         )}
                       </div>
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {isSelectedDateInPast ? "Past day" : "Available"}
-                        </span>
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() => handleToggleHour(hour)}
-                          disabled={isSelectedDateInPast}
-                          aria-label={`Select ${toHourLabel(hour)}`}
-                        />
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  )
+                }
+
+                return (
+                  <button
+                    key={hour}
+                    type="button"
+                    onClick={() => handleToggleHour(hour)}
+                    disabled={isSelectedDateInPast}
+                    className={[
+                      "flex w-full items-center justify-between rounded-md border px-2 py-1.5 text-left transition sm:px-2.5",
+                      checked
+                        ? "border-primary/40 bg-primary/10"
+                        : "border-border bg-background hover:bg-muted/60",
+                      isSelectedDateInPast && "cursor-not-allowed opacity-60 hover:bg-background",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <span className="text-[13px] font-medium sm:text-sm">{toHourLabel(hour)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {isSelectedDateInPast ? "Past day" : checked ? "Selected" : "Available"}
+                    </span>
+                  </button>
                 )
               })}
 
