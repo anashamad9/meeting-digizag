@@ -788,6 +788,17 @@ export default function Home() {
                     <MailIcon className="size-4" />
                     {checkingEmail ? "Checking..." : "Continue"}
                   </Button>
+                  <div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleForgotPassword}
+                      disabled={sendingResetPassword}
+                    >
+                      {sendingResetPassword ? "Sending reset..." : "Forgot password?"}
+                    </Button>
+                  </div>
                 </form>
               )}
 
@@ -874,7 +885,9 @@ export default function Home() {
                       <ArrowLeftIcon className="size-4" />
                       Change Email
                     </Button>
-                    {authStep === "login" && (
+                  </div>
+                  {authStep === "login" && (
+                    <div>
                       <Button
                         type="button"
                         size="sm"
@@ -884,8 +897,8 @@ export default function Home() {
                       >
                         {sendingResetPassword ? "Sending reset..." : "Forgot password?"}
                       </Button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </form>
               )}
             </CardContent>
