@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
 import type { User } from "@supabase/supabase-js"
 import Image from "next/image"
 import {
@@ -18,13 +18,16 @@ import {
   subMonths,
 } from "date-fns"
 import {
+  ArrowLeftIcon,
   CalendarIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   Clock3Icon,
+  LockIcon,
   LogOutIcon,
   MailIcon,
   Trash2Icon,
+  UserPlusIcon,
 } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/reui/alert"
@@ -57,6 +60,8 @@ type Notice = {
   kind: "error" | "success"
   text: string
 }
+
+type AuthStep = "email" | "login" | "signup"
 
 const HOURS = Array.from({ length: 12 }, (_, i) => i + 8)
 const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
@@ -116,11 +121,19 @@ function initialNameFromEmail(email?: string | null) {
     .replace(/\b\w/g, (match) => match.toUpperCase())
 }
 
+function isValidEmail(email: string) {
+  return /^\S+@\S+\.\S+$/.test(email)
+}
+
 export default function Home() {
   const [ready, setReady] = useState(!hasSupabaseEnv)
   const [user, setUser] = useState<User | null>(null)
+  const [authStep, setAuthStep] = useState<AuthStep>("email")
   const [authEmail, setAuthEmail] = useState("")
-  const [sendingMagicLink, setSendingMagicLink] = useState(false)
+  const [authPassword, setAuthPassword] = useState("")
+  const [authPasswordConfirm, setAuthPasswordConfirm] = useState("")
+  const [checkingEmail, setCheckingEmail] = useState(false)
+  const [submittingAuth, setSubmittingAuth] = useState(false)
 
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()))
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -131,6 +144,8 @@ export default function Home() {
   const [submittingBooking, setSubmittingBooking] = useState(false)
   const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
+
+  const normalizedEmail = authEmail.trim().toLowerCase()
 
   const markSessionStarted = useCallback(() => {
     localStorage.setItem(SESSION_STARTED_AT_KEY, String(Date.now()))
@@ -169,34 +184,31 @@ export default function Home() {
     )
   }, [])
 
-  const loadMonthBookings = useCallback(
-    async (monthDate: Date) => {
-      setLoadingBookings(true)
+  const loadMonthBookings = useCallback(async (monthDate: Date) => {
+    setLoadingBookings(true)
 
-      const from = format(startOfMonth(monthDate), "yyyy-MM-dd")
-      const to = format(endOfMonth(monthDate), "yyyy-MM-dd")
+    const from = format(startOfMonth(monthDate), "yyyy-MM-dd")
+    const to = format(endOfMonth(monthDate), "yyyy-MM-dd")
 
-      const { data, error } = await supabase
-        .from("bookings")
-        .select(
-          "id, booking_date, hour, booked_by, profiles:profiles!bookings_booked_by_fkey(full_name, email)"
-        )
-        .gte("booking_date", from)
-        .lte("booking_date", to)
-        .order("booking_date", { ascending: true })
-        .order("hour", { ascending: true })
+    const { data, error } = await supabase
+      .from("bookings")
+      .select(
+        "id, booking_date, hour, booked_by, profiles:profiles!bookings_booked_by_fkey(full_name, email)"
+      )
+      .gte("booking_date", from)
+      .lte("booking_date", to)
+      .order("booking_date", { ascending: true })
+      .order("hour", { ascending: true })
 
-      if (error) {
-        setNotice({ kind: "error", text: error.message })
-      } else {
-        setBookings((data ?? []) as unknown as BookingRow[])
-        setNotice(null)
-      }
+    if (error) {
+      setNotice({ kind: "error", text: error.message })
+    } else {
+      setBookings((data ?? []) as unknown as BookingRow[])
+      setNotice(null)
+    }
 
-      setLoadingBookings(false)
-    },
-    []
-  )
+    setLoadingBookings(false)
+  }, [])
 
   useEffect(() => {
     if (!hasSupabaseEnv) {
@@ -229,6 +241,7 @@ export default function Home() {
 
       setUser(sessionUser)
       setReady(true)
+
       if (sessionUser) {
         await ensureProfile(sessionUser)
         await loadMonthBookings(currentMonth)
@@ -323,6 +336,7 @@ export default function Home() {
     () => new Set(selectedDateBookings.map((booking) => booking.hour)),
     [selectedDateBookings]
   )
+
   const isSelectedDateInPast = isBefore(startOfDay(selectedDate), startOfDay(new Date()))
 
   const calendarDays = useMemo(() => {
@@ -338,36 +352,108 @@ export default function Home() {
   const currentUserName = initialNameFromEmail(user?.email)
   const isHrUser = user?.email?.toLowerCase() === HR_EMAIL
 
-  const handleSendMagicLink = async () => {
-    if (!authEmail.trim()) {
-      setNotice({ kind: "error", text: "Please enter your email." })
+  const handleEmailStepSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!isValidEmail(normalizedEmail)) {
+      setNotice({ kind: "error", text: "Enter a valid email address." })
       return
     }
 
-    setSendingMagicLink(true)
+    setCheckingEmail(true)
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: authEmail.trim(),
-      options: {
-        emailRedirectTo: window.location.origin,
-      },
+    const { data, error } = await supabase.rpc("account_exists", {
+      input_email: normalizedEmail,
     })
 
     if (error) {
-      setNotice({ kind: "error", text: error.message })
-    } else {
       setNotice({
-        kind: "success",
-        text: "Magic link sent. Open your email and click the login link.",
+        kind: "error",
+        text:
+          "Could not check email. Run the latest SQL script (account_exists function), then try again.",
       })
+      setCheckingEmail(false)
+      return
     }
 
-    setSendingMagicLink(false)
+    if (data) {
+      setAuthStep("login")
+      setNotice(null)
+    } else {
+      setAuthStep("signup")
+      setNotice({ kind: "success", text: "New email detected. Create your password." })
+    }
+
+    setAuthPassword("")
+    setAuthPasswordConfirm("")
+    setCheckingEmail(false)
   }
 
-  const handleLoginSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    await handleSendMagicLink()
+
+    if (!isValidEmail(normalizedEmail)) {
+      setNotice({ kind: "error", text: "Enter a valid email address." })
+      return
+    }
+
+    if (!authPassword) {
+      setNotice({ kind: "error", text: "Enter your password." })
+      return
+    }
+
+    if (authStep === "signup") {
+      if (authPassword.length < 6) {
+        setNotice({ kind: "error", text: "Password must be at least 6 characters." })
+        return
+      }
+
+      if (authPassword !== authPasswordConfirm) {
+        setNotice({ kind: "error", text: "Passwords do not match." })
+        return
+      }
+    }
+
+    setSubmittingAuth(true)
+
+    if (authStep === "login") {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password: authPassword,
+      })
+
+      if (error) {
+        setNotice({ kind: "error", text: "Invalid email or password." })
+      } else {
+        setNotice(null)
+      }
+    } else {
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password: authPassword,
+      })
+
+      if (error) {
+        setNotice({ kind: "error", text: error.message })
+      } else if (!data.session) {
+        setAuthStep("login")
+        setNotice({
+          kind: "success",
+          text: "Account created. If you cannot login, disable Confirm Email in Supabase Auth settings.",
+        })
+      } else {
+        setNotice({ kind: "success", text: "Account created and logged in." })
+      }
+    }
+
+    setSubmittingAuth(false)
+  }
+
+  const handleBackToEmail = () => {
+    setAuthStep("email")
+    setAuthPassword("")
+    setAuthPasswordConfirm("")
+    setNotice(null)
   }
 
   const handleToggleHour = (hour: number) => {
@@ -427,6 +513,9 @@ export default function Home() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
+    setAuthStep("email")
+    setAuthPassword("")
+    setAuthPasswordConfirm("")
     setNotice(null)
   }
 
@@ -493,28 +582,66 @@ export default function Home() {
           <Card>
             <CardHeader>
               <CardTitle>DigiZag Meeting Room</CardTitle>
-              <CardDescription>Email-only login (magic link).</CardDescription>
+              <CardDescription>Email + password login.</CardDescription>
             </CardHeader>
-            <CardContent>
-              <form className="space-y-3" onSubmit={handleLoginSubmit}>
-                <Input
-                  type="email"
-                  placeholder="name@digizag.com"
-                  value={authEmail}
-                  onChange={(event) => setAuthEmail(event.target.value)}
-                />
-                <Button type="submit" disabled={sendingMagicLink}>
-                  <MailIcon className="size-4" />
-                  {sendingMagicLink ? "Sending..." : "Send Login Link"}
-                </Button>
-              </form>
+            <CardContent className="space-y-3">
+              {authStep === "email" && (
+                <form className="space-y-3" onSubmit={handleEmailStepSubmit}>
+                  <Input
+                    type="email"
+                    placeholder="name@digizag.com"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                  />
+                  <Button type="submit" disabled={checkingEmail}>
+                    <MailIcon className="size-4" />
+                    {checkingEmail ? "Checking..." : "Continue"}
+                  </Button>
+                </form>
+              )}
+
+              {(authStep === "login" || authStep === "signup") && (
+                <form className="space-y-3" onSubmit={handleAuthSubmit}>
+                  <Input type="email" value={normalizedEmail} disabled />
+                  <Input
+                    type="password"
+                    placeholder={authStep === "login" ? "Enter your password" : "Create password"}
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                  />
+                  {authStep === "signup" && (
+                    <Input
+                      type="password"
+                      placeholder="Confirm password"
+                      value={authPasswordConfirm}
+                      onChange={(event) => setAuthPasswordConfirm(event.target.value)}
+                    />
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="submit" disabled={submittingAuth}>
+                      {authStep === "login" ? <LockIcon className="size-4" /> : <UserPlusIcon className="size-4" />}
+                      {submittingAuth
+                        ? authStep === "login"
+                          ? "Logging in..."
+                          : "Creating..."
+                        : authStep === "login"
+                          ? "Login"
+                          : "Create Account"}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={handleBackToEmail}>
+                      <ArrowLeftIcon className="size-4" />
+                      Change Email
+                    </Button>
+                  </div>
+                </form>
+              )}
             </CardContent>
           </Card>
 
           {notice && (
             <div className="mt-4">
               <Alert variant={notice.kind === "error" ? "destructive" : "default"}>
-                <AlertTitle>{notice.kind === "error" ? "Error" : "Check your email"}</AlertTitle>
+                <AlertTitle>{notice.kind === "error" ? "Error" : "Done"}</AlertTitle>
                 <AlertDescription>{notice.text}</AlertDescription>
               </Alert>
             </div>
