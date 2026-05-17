@@ -69,7 +69,7 @@ const ROOM_TIME_ZONE = "Asia/Amman"
 const SESSION_STARTED_AT_KEY = "digizag_meeting_room_session_started_at"
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const HR_EMAIL = "hr@digizag.com"
-const LOGIN_TYPING_TEXT = "Welcome to the meeting Toom"
+const LOGIN_TYPING_TEXT = "Welcome to the meeting Room"
 
 function formatDateKey(value: Date) {
   return format(value, "yyyy-MM-dd")
