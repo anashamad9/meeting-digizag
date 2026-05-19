@@ -26,7 +26,9 @@ import {
   LockIcon,
   LogOutIcon,
   MailIcon,
+  MoonIcon,
   RefreshCwIcon,
+  SunIcon,
   Trash2Icon,
   UserPlusIcon,
 } from "lucide-react"
@@ -78,6 +80,7 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const API_REQUEST_TIMEOUT_MS = 10000
 const HR_EMAIL = "hr@digizag.com"
 const LOGIN_TYPING_TEXT = "Welcome to the meeting Room"
+const THEME_STORAGE_KEY = "digizag_meeting_room_theme"
 
 function formatDateKey(value: Date) {
   return format(value, "yyyy-MM-dd")
@@ -197,6 +200,7 @@ export default function Home() {
   const [signingOut, setSigningOut] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [typedLoginTitle, setTypedLoginTitle] = useState("")
+  const [isDarkMode, setIsDarkMode] = useState(false)
   const lastEnsuredProfileIdRef = useRef<string | null>(null)
 
   const normalizedEmail = authEmail.trim().toLowerCase()
@@ -209,6 +213,16 @@ export default function Home() {
     const hash = window.location.hash.toLowerCase()
     const search = window.location.search.toLowerCase()
     return hash.includes("type=recovery") || search.includes("type=recovery")
+  }, [])
+
+  useEffect(() => {
+    const root = document.documentElement
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY)
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+    const shouldUseDark = storedTheme ? storedTheme === "dark" : prefersDark
+
+    setIsDarkMode(shouldUseDark)
+    root.classList.toggle("dark", shouldUseDark)
   }, [])
 
   useEffect(() => {
@@ -237,6 +251,13 @@ export default function Home() {
       }
     }
   }, [])
+
+  const handleThemeToggle = () => {
+    const nextIsDark = !isDarkMode
+    setIsDarkMode(nextIsDark)
+    document.documentElement.classList.toggle("dark", nextIsDark)
+    localStorage.setItem(THEME_STORAGE_KEY, nextIsDark ? "dark" : "light")
+  }
 
   const markSessionStarted = useCallback(() => {
     localStorage.setItem(SESSION_STARTED_AT_KEY, String(Date.now()))
@@ -858,12 +879,25 @@ export default function Home() {
               </div>
             )}
             <CardHeader>
-              <CardTitle>
-                {isRecoveryMode ? "DigiZag Meeting Room" : `${typedLoginTitle || " "}|`}
-              </CardTitle>
-              <CardDescription>
-                {isRecoveryMode ? "Set a new password." : "Email + password login."}
-              </CardDescription>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>
+                    {isRecoveryMode ? "DigiZag Meeting Room" : `${typedLoginTitle || " "}|`}
+                  </CardTitle>
+                  <CardDescription>
+                    {isRecoveryMode ? "Set a new password." : "Email + password login."}
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="outline"
+                  onClick={handleThemeToggle}
+                  aria-label={isDarkMode ? "Switch to light theme" : "Switch to dark theme"}
+                >
+                  {isDarkMode ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {isRecoveryMode && (
