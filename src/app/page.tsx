@@ -68,6 +68,7 @@ const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
 const ROOM_TIME_ZONE = "Asia/Amman"
 const SESSION_STARTED_AT_KEY = "digizag_meeting_room_session_started_at"
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const AUTH_BOOT_TIMEOUT_MS = 8000
 const HR_EMAIL = "hr@digizag.com"
 const LOGIN_TYPING_TEXT = "Welcome to the meeting Room"
 
@@ -139,6 +140,22 @@ function initialNameFromEmail(email?: string | null) {
 
 function isValidEmail(email: string) {
   return /^\S+@\S+\.\S+$/.test(email)
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
+
+    promise
+      .then((value) => {
+        clearTimeout(timeoutId)
+        resolve(value)
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId)
+        reject(error)
+      })
+  })
 }
 
 export default function Home() {
@@ -250,28 +267,33 @@ export default function Home() {
 
   const loadMonthBookings = useCallback(async (monthDate: Date) => {
     setLoadingBookings(true)
+    try {
+      const from = format(startOfMonth(monthDate), "yyyy-MM-dd")
+      const to = format(endOfMonth(monthDate), "yyyy-MM-dd")
 
-    const from = format(startOfMonth(monthDate), "yyyy-MM-dd")
-    const to = format(endOfMonth(monthDate), "yyyy-MM-dd")
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(
+          "id, booking_date, hour, booked_by, profiles:profiles!bookings_booked_by_fkey(full_name, email)"
+        )
+        .gte("booking_date", from)
+        .lte("booking_date", to)
+        .order("booking_date", { ascending: true })
+        .order("hour", { ascending: true })
 
-    const { data, error } = await supabase
-      .from("bookings")
-      .select(
-        "id, booking_date, hour, booked_by, profiles:profiles!bookings_booked_by_fkey(full_name, email)"
-      )
-      .gte("booking_date", from)
-      .lte("booking_date", to)
-      .order("booking_date", { ascending: true })
-      .order("hour", { ascending: true })
+      if (error) {
+        setNotice({ kind: "error", text: error.message })
+        return
+      }
 
-    if (error) {
-      setNotice({ kind: "error", text: error.message })
-    } else {
       setBookings((data ?? []) as unknown as BookingRow[])
       setNotice(null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load bookings."
+      setNotice({ kind: "error", text: message })
+    } finally {
+      setLoadingBookings(false)
     }
-
-    setLoadingBookings(false)
   }, [])
 
   useEffect(() => {
@@ -285,41 +307,68 @@ export default function Home() {
       setIsRecoveryMode(true)
     }
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!mounted) {
-        return
-      }
+    const initializeSession = async () => {
+      try {
+        const { data, error } = await withTimeout(
+          supabase.auth.getSession(),
+          AUTH_BOOT_TIMEOUT_MS,
+          "Startup timed out while checking your session. Please refresh and try again."
+        )
 
-      const sessionUser = data.session?.user ?? null
-      if (sessionUser && hasSessionExpired()) {
-        clearSessionStarted()
-        await supabase.auth.signOut()
+        if (!mounted) {
+          return
+        }
+
+        if (error) {
+          throw error
+        }
+
+        const sessionUser = data.session?.user ?? null
+        if (sessionUser && hasSessionExpired()) {
+          clearSessionStarted()
+          await supabase.auth.signOut()
+          setUser(null)
+          setNotice({ kind: "error", text: "Session expired. Please login again." })
+          return
+        }
+
+        if (sessionUser) {
+          const stored = localStorage.getItem(SESSION_STARTED_AT_KEY)
+          if (!stored) {
+            markSessionStarted()
+          }
+        }
+
+        setUser(sessionUser)
+
+        if (recoveryRequested && sessionUser) {
+          setIsRecoveryMode(true)
+          setNotice({ kind: "success", text: "Set a new password for your account." })
+        }
+
+        if (sessionUser) {
+          await ensureProfile(sessionUser)
+          await loadMonthBookings(currentMonth)
+        }
+      } catch (error) {
+        if (!mounted) {
+          return
+        }
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Could not initialize session. Please refresh and try again."
         setUser(null)
-        setNotice({ kind: "error", text: "Session expired. Please login again." })
-        setReady(true)
-        return
-      }
-
-      if (sessionUser) {
-        const stored = localStorage.getItem(SESSION_STARTED_AT_KEY)
-        if (!stored) {
-          markSessionStarted()
+        setNotice({ kind: "error", text: message })
+      } finally {
+        if (mounted) {
+          setReady(true)
         }
       }
+    }
 
-      setUser(sessionUser)
-      setReady(true)
-
-      if (recoveryRequested && sessionUser) {
-        setIsRecoveryMode(true)
-        setNotice({ kind: "success", text: "Set a new password for your account." })
-      }
-
-      if (sessionUser) {
-        await ensureProfile(sessionUser)
-        await loadMonthBookings(currentMonth)
-      }
-    })
+    void initializeSession()
 
     const {
       data: { subscription },
