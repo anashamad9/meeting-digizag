@@ -152,16 +152,16 @@ function isValidEmail(email: string) {
   return /^\S+@\S+\.\S+$/.test(email)
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string) {
+function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, errorMessage: string) {
   return new Promise<T>((resolve, reject) => {
     const timeoutId = setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
 
-    promise
+    Promise.resolve(promise)
       .then((value) => {
         clearTimeout(timeoutId)
         resolve(value)
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         clearTimeout(timeoutId)
         reject(error)
       })
