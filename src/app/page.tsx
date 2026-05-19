@@ -69,6 +69,7 @@ const ROOM_TIME_ZONE = "Asia/Amman"
 const SESSION_STARTED_AT_KEY = "digizag_meeting_room_session_started_at"
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const AUTH_BOOT_TIMEOUT_MS = 8000
+const API_REQUEST_TIMEOUT_MS = 10000
 const HR_EMAIL = "hr@digizag.com"
 const LOGIN_TYPING_TEXT = "Welcome to the meeting Room"
 
@@ -167,7 +168,6 @@ export default function Home() {
   const [authPasswordConfirm, setAuthPasswordConfirm] = useState("")
   const [showAuthPassword, setShowAuthPassword] = useState(false)
   const [showAuthPasswordConfirm, setShowAuthPasswordConfirm] = useState(false)
-  const [checkingEmail, setCheckingEmail] = useState(false)
   const [submittingAuth, setSubmittingAuth] = useState(false)
   const [sendingResetPassword, setSendingResetPassword] = useState(false)
   const [isRecoveryMode, setIsRecoveryMode] = useState(false)
@@ -346,21 +346,27 @@ export default function Home() {
           setNotice({ kind: "success", text: "Set a new password for your account." })
         }
 
-        if (sessionUser) {
-          await ensureProfile(sessionUser)
-          await loadMonthBookings(currentMonth)
+      if (sessionUser) {
+          void ensureProfile(sessionUser)
         }
       } catch (error) {
         if (!mounted) {
           return
         }
 
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Could not initialize session. Please refresh and try again."
         setUser(null)
-        setNotice({ kind: "error", text: message })
+        // Do not block login flow with startup timeout noise.
+        // If auth is slow, user can still continue and sign in manually.
+        if (
+          !(error instanceof Error) ||
+          !error.message.includes("Startup timed out while checking your session")
+        ) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Could not initialize session. Please refresh and try again."
+          setNotice({ kind: "error", text: message })
+        }
       } finally {
         if (mounted) {
           setReady(true)
@@ -406,8 +412,7 @@ export default function Home() {
       setSelectedHours([])
 
       if (sessionUser) {
-        await ensureProfile(sessionUser)
-        await loadMonthBookings(currentMonth)
+        void ensureProfile(sessionUser)
       } else {
         setBookings([])
       }
@@ -419,11 +424,9 @@ export default function Home() {
     }
   }, [
     clearSessionStarted,
-    currentMonth,
     ensureProfile,
     hasRecoveryLink,
     hasSessionExpired,
-    loadMonthBookings,
     markSessionStarted,
   ])
 
@@ -516,35 +519,12 @@ export default function Home() {
       return
     }
 
-    setCheckingEmail(true)
-
-    const { data, error } = await supabase.rpc("account_exists", {
-      input_email: normalizedEmail,
-    })
-
-    if (error) {
-      setNotice({
-        kind: "error",
-        text:
-          "Could not check email. Run the latest SQL script (account_exists function), then try again.",
-      })
-      setCheckingEmail(false)
-      return
-    }
-
-    if (data) {
-      setAuthStep("login")
-      setNotice(null)
-    } else {
-      setAuthStep("signup")
-      setNotice({ kind: "success", text: "New email detected. Create your password." })
-    }
-
+    setAuthStep("login")
     setAuthPassword("")
     setAuthPasswordConfirm("")
     setShowAuthPassword(false)
     setShowAuthPasswordConfirm(false)
-    setCheckingEmail(false)
+    setNotice(null)
   }
 
   const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -574,37 +554,50 @@ export default function Home() {
 
     setSubmittingAuth(true)
 
-    if (authStep === "login") {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password: authPassword,
-      })
+    try {
+      if (authStep === "login") {
+        const { error } = await withTimeout(
+          supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: authPassword,
+          }),
+          API_REQUEST_TIMEOUT_MS,
+          "Login is taking too long. Please try again."
+        )
 
-      if (error) {
-        setNotice({ kind: "error", text: "Invalid email or password." })
+        if (error) {
+          setNotice({ kind: "error", text: "Invalid email or password." })
+        } else {
+          setNotice(null)
+        }
       } else {
-        setNotice(null)
-      }
-    } else {
-      const { data, error } = await supabase.auth.signUp({
-        email: normalizedEmail,
-        password: authPassword,
-      })
+        const { data, error } = await withTimeout(
+          supabase.auth.signUp({
+            email: normalizedEmail,
+            password: authPassword,
+          }),
+          API_REQUEST_TIMEOUT_MS,
+          "Sign up is taking too long. Please try again."
+        )
 
-      if (error) {
-        setNotice({ kind: "error", text: error.message })
-      } else if (!data.session) {
-        setAuthStep("login")
-        setNotice({
-          kind: "success",
-          text: "Account created. Please login with your password.",
-        })
-      } else {
-        setNotice({ kind: "success", text: "Account created and logged in." })
+        if (error) {
+          setNotice({ kind: "error", text: error.message })
+        } else if (!data.session) {
+          setAuthStep("login")
+          setNotice({
+            kind: "success",
+            text: "Account created. Please login with your password.",
+          })
+        } else {
+          setNotice({ kind: "success", text: "Account created and logged in." })
+        }
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Authentication failed."
+      setNotice({ kind: "error", text: message })
+    } finally {
+      setSubmittingAuth(false)
     }
-
-    setSubmittingAuth(false)
   }
 
   const handleBackToEmail = () => {
@@ -623,21 +616,29 @@ export default function Home() {
     }
 
     setSendingResetPassword(true)
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo: window.location.origin,
+        }),
+        API_REQUEST_TIMEOUT_MS,
+        "Sending reset link is taking too long. Please try again."
+      )
 
-    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-      redirectTo: window.location.origin,
-    })
-
-    if (error) {
-      setNotice({ kind: "error", text: error.message })
-    } else {
-      setNotice({
-        kind: "success",
-        text: "Password reset link sent. Open your email, then set the new password here.",
-      })
+      if (error) {
+        setNotice({ kind: "error", text: error.message })
+      } else {
+        setNotice({
+          kind: "success",
+          text: "Password reset link sent. Open your email, then set the new password here.",
+        })
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to send reset email."
+      setNotice({ kind: "error", text: message })
+    } finally {
+      setSendingResetPassword(false)
     }
-
-    setSendingResetPassword(false)
   }
 
   const handleRecoveryPasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -719,17 +720,26 @@ export default function Home() {
       booked_by: user.id,
     }))
 
-    const { error } = await supabase.from("bookings").insert(payload)
+    try {
+      const { error } = await withTimeout(
+        supabase.from("bookings").insert(payload),
+        API_REQUEST_TIMEOUT_MS,
+        "Booking is taking too long. Please try again."
+      )
 
-    if (error) {
-      setNotice({ kind: "error", text: error.message })
-    } else {
-      setNotice({ kind: "success", text: "Meeting room booked successfully." })
-      setSelectedHours([])
-      await loadMonthBookings(currentMonth)
+      if (error) {
+        setNotice({ kind: "error", text: error.message })
+      } else {
+        setNotice({ kind: "success", text: "Meeting room booked successfully." })
+        setSelectedHours([])
+        void loadMonthBookings(currentMonth)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create booking."
+      setNotice({ kind: "error", text: message })
+    } finally {
+      setSubmittingBooking(false)
     }
-
-    setSubmittingBooking(false)
   }
 
   const handleRefreshBookings = async () => {
@@ -773,16 +783,25 @@ export default function Home() {
 
     setDeletingBookingId(booking.id)
 
-    const { error } = await supabase.from("bookings").delete().eq("id", booking.id)
+    try {
+      const { error } = await withTimeout(
+        supabase.from("bookings").delete().eq("id", booking.id),
+        API_REQUEST_TIMEOUT_MS,
+        "Deleting booking is taking too long. Please try again."
+      )
 
-    if (error) {
-      setNotice({ kind: "error", text: error.message })
-    } else {
-      setNotice({ kind: "success", text: `Deleted ${toHourLabel(booking.hour)} booking.` })
-      await loadMonthBookings(currentMonth)
+      if (error) {
+        setNotice({ kind: "error", text: error.message })
+      } else {
+        setNotice({ kind: "success", text: `Deleted ${toHourLabel(booking.hour)} booking.` })
+        void loadMonthBookings(currentMonth)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete booking."
+      setNotice({ kind: "error", text: message })
+    } finally {
+      setDeletingBookingId(null)
     }
-
-    setDeletingBookingId(null)
   }
 
   if (!ready) {
@@ -923,9 +942,9 @@ export default function Home() {
                     name="email"
                     className="h-9 text-sm"
                   />
-                  <Button type="submit" size="sm" disabled={checkingEmail}>
+                  <Button type="submit" size="sm">
                     <MailIcon className="size-4" />
-                    {checkingEmail ? "Checking..." : "Continue"}
+                    Continue
                   </Button>
                   <div>
                     <Button
@@ -1035,6 +1054,22 @@ export default function Home() {
                         disabled={sendingResetPassword}
                       >
                         {sendingResetPassword ? "Sending reset..." : "Forgot password?"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setAuthStep("signup")
+                          setAuthPassword("")
+                          setAuthPasswordConfirm("")
+                          setShowAuthPassword(false)
+                          setShowAuthPasswordConfirm(false)
+                          setNotice(null)
+                        }}
+                      >
+                        <UserPlusIcon className="size-4" />
+                        Create account
                       </Button>
                     </div>
                   )}
