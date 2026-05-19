@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import type { User } from "@supabase/supabase-js"
 import Image from "next/image"
 import {
@@ -42,6 +42,7 @@ import { hasSupabaseEnv, supabase } from "@/lib/supabase"
 type BookingRow = {
   id: string
   booking_date: string
+  // 30-minute slot encoded as minutes from midnight (e.g. 08:30 = 510)
   hour: number
   booked_by: string
   profiles:
@@ -63,12 +64,17 @@ type Notice = {
 
 type AuthStep = "email" | "login" | "signup"
 
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 8)
+const SLOT_START_MINUTES = 8 * 60
+const SLOT_END_MINUTES = 19 * 60 + 30
+const SLOT_INTERVAL_MINUTES = 30
+const TIME_SLOTS = Array.from(
+  { length: Math.floor((SLOT_END_MINUTES - SLOT_START_MINUTES) / SLOT_INTERVAL_MINUTES) + 1 },
+  (_, i) => SLOT_START_MINUTES + i * SLOT_INTERVAL_MINUTES
+)
 const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
 const ROOM_TIME_ZONE = "Asia/Amman"
 const SESSION_STARTED_AT_KEY = "digizag_meeting_room_session_started_at"
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
-const AUTH_BOOT_TIMEOUT_MS = 8000
 const API_REQUEST_TIMEOUT_MS = 10000
 const HR_EMAIL = "hr@digizag.com"
 const LOGIN_TYPING_TEXT = "Welcome to the meeting Room"
@@ -125,7 +131,10 @@ function resolveProfile(value: BookingRow["profiles"]) {
 }
 
 function toHourLabel(hour: number) {
-  return `${String(hour).padStart(2, "0")}:00`
+  const normalized = ((hour % (24 * 60)) + 24 * 60) % (24 * 60)
+  const hours = Math.floor(normalized / 60)
+  const minutes = normalized % 60
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
 }
 
 function initialNameFromEmail(email?: string | null) {
@@ -160,7 +169,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 }
 
 export default function Home() {
-  const [ready, setReady] = useState(!hasSupabaseEnv)
+  const [ready] = useState(true)
   const [user, setUser] = useState<User | null>(null)
   const [authStep, setAuthStep] = useState<AuthStep>("email")
   const [authEmail, setAuthEmail] = useState("")
@@ -188,6 +197,7 @@ export default function Home() {
   const [signingOut, setSigningOut] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [typedLoginTitle, setTypedLoginTitle] = useState("")
+  const lastEnsuredProfileIdRef = useRef<string | null>(null)
 
   const normalizedEmail = authEmail.trim().toLowerCase()
   const isRecoveryPasswordValid =
@@ -309,11 +319,7 @@ export default function Home() {
 
     const initializeSession = async () => {
       try {
-        const { data, error } = await withTimeout(
-          supabase.auth.getSession(),
-          AUTH_BOOT_TIMEOUT_MS,
-          "Startup timed out while checking your session. Please refresh and try again."
-        )
+        const { data, error } = await supabase.auth.getSession()
 
         if (!mounted) {
           return
@@ -346,7 +352,8 @@ export default function Home() {
           setNotice({ kind: "success", text: "Set a new password for your account." })
         }
 
-      if (sessionUser) {
+        if (sessionUser && lastEnsuredProfileIdRef.current !== sessionUser.id) {
+          lastEnsuredProfileIdRef.current = sessionUser.id
           void ensureProfile(sessionUser)
         }
       } catch (error) {
@@ -355,22 +362,11 @@ export default function Home() {
         }
 
         setUser(null)
-        // Do not block login flow with startup timeout noise.
-        // If auth is slow, user can still continue and sign in manually.
-        if (
-          !(error instanceof Error) ||
-          !error.message.includes("Startup timed out while checking your session")
-        ) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Could not initialize session. Please refresh and try again."
-          setNotice({ kind: "error", text: message })
-        }
-      } finally {
-        if (mounted) {
-          setReady(true)
-        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Could not initialize session. Please refresh and try again."
+        setNotice({ kind: "error", text: message })
       }
     }
 
@@ -378,7 +374,7 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       const sessionUser = session?.user ?? null
 
       if (event === "PASSWORD_RECOVERY") {
@@ -402,7 +398,9 @@ export default function Home() {
 
       if (sessionUser && hasSessionExpired()) {
         clearSessionStarted()
-        await supabase.auth.signOut()
+        setTimeout(() => {
+          void supabase.auth.signOut()
+        }, 0)
         setUser(null)
         setNotice({ kind: "error", text: "Session expired. Please login again." })
         return
@@ -412,8 +410,14 @@ export default function Home() {
       setSelectedHours([])
 
       if (sessionUser) {
-        void ensureProfile(sessionUser)
+        if (lastEnsuredProfileIdRef.current !== sessionUser.id) {
+          lastEnsuredProfileIdRef.current = sessionUser.id
+          setTimeout(() => {
+            void ensureProfile(sessionUser)
+          }, 0)
+        }
       } else {
+        lastEnsuredProfileIdRef.current = null
         setBookings([])
       }
     })
@@ -708,7 +712,7 @@ export default function Home() {
     }
 
     if (selectedHours.length === 0) {
-      setNotice({ kind: "error", text: "Select at least one hour." })
+      setNotice({ kind: "error", text: "Select at least one slot." })
       return
     }
 
@@ -1122,11 +1126,11 @@ export default function Home() {
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <Clock3Icon className="size-4" />
-                Hourly slots
+                30-minute slots
               </div>
               <div className="flex items-center gap-2">
                 <CalendarIcon className="size-4" />
-                Multi-hour booking enabled
+                Multi-slot booking enabled
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{ROOM_TIME_ZONE}</Badge>
@@ -1242,17 +1246,17 @@ export default function Home() {
                 </Button>
               </div>
               <CardDescription>
-                Select one or more hours to book, or delete your own booking.
+                Select one or more 30-minute slots to book, or delete your own booking.
               </CardDescription>
               {isSelectedDateInPast && (
                 <p className="text-xs text-destructive">Past days cannot be booked.</p>
               )}
             </CardHeader>
             <CardContent className="space-y-2">
-              {HOURS.map((hour) => {
-                const booking = selectedDateBookings.find((item) => item.hour === hour)
+              {TIME_SLOTS.map((slotMinutes) => {
+                const booking = selectedDateBookings.find((item) => item.hour === slotMinutes)
                 const isBooked = Boolean(booking)
-                const checked = selectedHours.includes(hour)
+                const checked = selectedHours.includes(slotMinutes)
                 const isOwnBooking = booking?.booked_by === user.id
                 const canDeleteBooking = Boolean(booking && (isOwnBooking || isHrUser))
                 const isDeleting = deletingBookingId === booking?.id
@@ -1260,10 +1264,10 @@ export default function Home() {
                 if (isBooked) {
                   return (
                     <div
-                      key={hour}
+                      key={slotMinutes}
                       className="flex items-center justify-between rounded-md border border-amber-200/70 bg-amber-50/45 px-2 py-1.5 sm:px-2.5"
                     >
-                      <span className="text-[13px] font-medium sm:text-sm">{toHourLabel(hour)}</span>
+                      <span className="text-[13px] font-medium sm:text-sm">{toHourLabel(slotMinutes)}</span>
 
                       <div className="flex items-center gap-1.5">
                         <Badge variant="secondary">
@@ -1287,9 +1291,9 @@ export default function Home() {
 
                 return (
                   <button
-                    key={hour}
+                    key={slotMinutes}
                     type="button"
-                    onClick={() => handleToggleHour(hour)}
+                    onClick={() => handleToggleHour(slotMinutes)}
                     disabled={isSelectedDateInPast}
                     className={[
                       "flex w-full items-center justify-between rounded-md border px-2 py-1.5 text-left transition sm:px-2.5",
@@ -1301,7 +1305,7 @@ export default function Home() {
                       .filter(Boolean)
                       .join(" ")}
                   >
-                    <span className="text-[13px] font-medium sm:text-sm">{toHourLabel(hour)}</span>
+                    <span className="text-[13px] font-medium sm:text-sm">{toHourLabel(slotMinutes)}</span>
                     <span className="text-xs text-muted-foreground">
                       {isSelectedDateInPast ? "Past day" : checked ? "Selected" : "Available"}
                     </span>
@@ -1312,7 +1316,7 @@ export default function Home() {
               <Separator />
 
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Selected hours</span>
+                <span className="text-muted-foreground">Selected slots</span>
                 <span>{selectedHours.length}</span>
               </div>
 
@@ -1321,7 +1325,7 @@ export default function Home() {
                 onClick={handleBookHours}
                 disabled={submittingBooking || selectedHours.length === 0 || isSelectedDateInPast}
               >
-                {submittingBooking ? "Booking..." : `Book ${selectedHours.length} Hour(s)`}
+                {submittingBooking ? "Booking..." : `Book ${selectedHours.length} Slot(s)`}
               </Button>
 
               {loadingBookings && <p className="text-xs text-muted-foreground">Refreshing bookings...</p>}

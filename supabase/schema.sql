@@ -14,7 +14,8 @@ create table if not exists public.profiles (
 create table if not exists public.bookings (
   id uuid primary key default gen_random_uuid(),
   booking_date date not null,
-  hour smallint not null check (hour between 0 and 23),
+  -- 30-minute slot encoded as minutes from midnight (00:00 = 0, 23:30 = 1410)
+  hour smallint not null check (hour between 0 and 1410 and hour % 30 = 0),
   booked_by uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz not null default now(),
   unique (booking_date, hour)
